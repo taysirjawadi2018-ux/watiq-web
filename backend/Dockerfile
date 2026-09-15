@@ -58,5 +58,5 @@ EXPOSE 8000
 # then marked unhealthy and everything downstream is blocked behind a service
 # that was only ever slow to start.
 HEALTHCHECK --interval=15s --timeout=5s --retries=5 --start-period=60s \
-  CMD python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/healthz')"
-ENTRYPOINT ["gunicorn","app.main:app","--worker-class","uvicorn.workers.UvicornWorker","--bind","0.0.0.0:8000"]
+  CMD python -c "import os, urllib.request; port = os.environ.get('PORT', '8000'); urllib.request.urlopen(f'http://127.0.0.1:{port}/healthz')"
+ENTRYPOINT ["sh", "-c", "exec gunicorn app.main:app --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000}"]
