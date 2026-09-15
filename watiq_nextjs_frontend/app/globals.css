@@ -1,0 +1,6 @@
+/* The whole stylesheet lives in styles/watiq.css — shared verbatim with the
+ * design-token generators. It already pulls in _fonts/_tokens/_theme and emits
+ * all three @tailwind layers, so this file is only the entry point Next.js
+ * needs inside app/. Do not add @tailwind directives here: a second
+ * `@tailwind utilities` emits the entire utility layer twice. */
+@import "../styles/watiq.css";

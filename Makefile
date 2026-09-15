@@ -1,0 +1,74 @@
+.ONESHELL:
+.PHONY: up up-remote down doctor logs ps reset migrate test test-security test-frontend lint scan fmt dev-setup dev-keys frontend-build frontend-dev
+
+doctor:          ## check this machine can run the stack (ports, docker, .env) — changes nothing
+	bash ops/dev/preflight.sh
+
+up:              ## dev stack, self-contained (API on 127.0.0.1:8000, BFF on 127.0.0.1:3000)
+	bash ops/dev/preflight.sh
+	docker compose up -d --build --remove-orphans
+
+up-remote:       ## dev stack against a REMOTE database (Supabase/RDS); needs all six DSNs in .env
+	bash ops/dev/preflight.sh
+	docker compose -f docker-compose.yml -f docker-compose.remote-db.yml up -d --build --remove-orphans
+
+down:
+	docker compose down --remove-orphans
+
+ps:              ## what is running, and is it healthy
+	docker compose ps
+
+logs:            ## follow everything; `make logs s=api` for one service
+	docker compose logs -f --tail=100 $(s)
+
+reset:           ## DESTRUCTIVE: delete the database and object-store volumes, rebuild from scratch
+	@printf 'This deletes the pgdata and miniodata volumes. Type "yes" to continue: '
+	@read ans; [ "$$ans" = yes ] || { echo "aborted"; exit 1; }
+	docker compose down -v --remove-orphans
+	docker compose up -d --build
+
+migrate:         ## run as the migration user, never an app role
+	docker compose exec api alembic upgrade head
+
+test:
+	docker compose exec api pytest -q
+
+test-security:   ## the RLS regression suite — must pass before any merge
+	docker compose exec api pytest tests/security/ -v
+
+test-frontend:   ## BFF routes, guards, API contracts and the dead-control gate
+	cd watiq_nextjs_frontend && npm test
+
+frontend-build:  ## production build, including the text-scale PostCSS step
+	cd watiq_nextjs_frontend && npm install --no-audit --no-fund && npm run build
+
+frontend-dev:    ## run the BFF against a local API, with hot reload
+	cd watiq_nextjs_frontend && npm install --no-audit --no-fund && npm run dev
+
+lint:
+	ruff check backend && ruff format --check backend
+	mypy backend/app/core --strict
+	lint-imports --config backend/.importlinter
+
+scan:            ## see Security.md §12
+	pip-audit -r backend/requirements.lock
+	bandit -r backend/app -ll
+	semgrep --config=p/python --config=ops/semgrep/watiq.yml backend/
+	trivy image watiq-api:latest --severity HIGH,CRITICAL --exit-code 1
+	gitleaks detect --no-git
+
+fmt:
+	ruff format backend && ruff check --fix backend
+
+dev-setup:       ## first run: create .env from the example and generate dev keys
+	test -f .env || cp .env.example .env
+	$(MAKE) dev-keys
+
+dev-keys:        ## dev-only Ed25519 JWT keypair + MFA KEK; NEVER for production
+	uv run --project backend python ops/dev/gen_dev_keys.py
+
+# [2026-08-06 21:25:08] #219 style(deps): align interface naming conventions with style guidelines (#276)
+
+# [2026-08-06 21:25:48] #372 perf(deps): reduce DOM re-render count during state updates
+
+# [2026-08-06 21:25:48] #373 security(deps): update cryptographic hashing algorithm to Argon2id (#436)
